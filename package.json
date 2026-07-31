@@ -1,19 +1,16 @@
 {
-  "name": "raganork-md",
-  "version": "6.2.30",
-  "description": "A multi functional wa bot.",
+  "name": "victory-hub",
+  "version": "1.0.0",
+  "description": "Victory Hub - WhatsApp bot powered by Groq AI - Smart, Fast, Reliable",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "pm2 start index.js --name raganork-md --attach"
+    "start": "node index.js",
+    "dev": "pm2 start index.js --name victory-hub --attach",
+    "deploy": "pm2 start index.js --name victory-hub"
   },
-  "keywords": [
-    "whatsapp",
-    "bot",
-    "baileys",
-    "raganork"
-  ],
-  "author": "Sourav K",
+  "keywords": ["whatsapp","bot","baileys","victory-hub","groq","ai"],
+  "author": "KING DEV",
   "license": "GPL-3.0-or-later",
   "dependencies": {
     "@vitalets/google-translate-api": "^9.2.1",
@@ -42,4 +39,3 @@
     "youtube-sr": "^4.3.11"
   }
 }
-
