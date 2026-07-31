@@ -19,7 +19,7 @@ function applySQLiteResilience(sequelizeInstance) {
   }
 
   sequelizeInstance.__sqliteGuardsApplied = true;
-  const busyTimeoutMs = parseInt(process.env.SQLITE_BUSY_TIMEOUT || "15000", 10); // modifiable
+  const busyTimeoutMs = parseInt(process.env.SQLITE_BUSY_TIMEOUT || "15000", 10);
   const pragmas = [
     "PRAGMA journal_mode=WAL;",
     "PRAGMA synchronous=NORMAL;",
@@ -69,7 +69,7 @@ function applySQLiteResilience(sequelizeInstance) {
   };
 
   const isWriteQuery = (sql) => {
-    if (!sql || typeof sql !== "string") return true; // default to safe mode
+    if (!sql || typeof sql !== "string") return true;
     const normalizedSql = sql.trim().toUpperCase();
     return (
       normalizedSql.startsWith("INSERT") ||
@@ -83,7 +83,6 @@ function applySQLiteResilience(sequelizeInstance) {
   };
 
   sequelizeInstance.query = function serializedQuery(sql, ...rest) {
-    // only queue writes; reads can run concurrently
     if (!isWriteQuery(sql)) {
       return originalQuery(sql, ...rest);
     }
@@ -171,7 +170,6 @@ const SESSION = SESSION_STRING
 
 const settingsMenu = [
   { title: "PM antispam block", env_var: "PM_ANTISPAM" },
-  //{ title: "Command auto reaction", env_var: "CMD_REACTION" },
   { title: "Auto read all messages", env_var: "READ_MESSAGES" },
   { title: "Auto read command messages", env_var: "READ_COMMAND" },
   { title: "Auto read status updates", env_var: "AUTO_READ_STATUS" },
@@ -236,15 +234,18 @@ const baseConfig = {
     "deb80cd12ababea1c9b9a8ad6ce3fab2",
     "78c84c62b32a88e86daf87dd509a657a",
   ],
+  GROQ_API_KEY: process.env.GROQ_API_KEY || "",
+  GROQ_MODEL: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+  GROQ_VISION_MODEL: process.env.GROQ_VISION_MODEL || "llama-3.2-90b-vision-preview",
   RG: process.env.RG || "919074309534-1632403322@g.us,120363116963909366@g.us",
-  BOT_INFO: process.env.BOT_INFO || "𝖱𝖺𝗀𝖺𝗇𝗈𝗋𝗄;𝖱𝗒𝗓𝖾𝗇;default",
+  BOT_INFO: process.env.BOT_INFO || "Victory Hub;KING DEV;default",
   RBG_KEY: process.env.RBG_KEY || "",
   ALLOWED: process.env.ALLOWED || "91,94,2",
   NOT_ALLOWED: process.env.NOT_ALLOWED || "852",
   CHATBOT: process.env.CHATBOT || "off",
   HANDLERS: process.env.HANDLERS || ".,",
-  STICKER_DATA: process.env.STICKER_DATA || "Raganork",
-  BOT_NAME: process.env.BOT_NAME || "Raganork",
+  STICKER_DATA: process.env.STICKER_DATA || "Victory Hub",
+  BOT_NAME: process.env.BOT_NAME || "Victory Hub",
   AUDIO_DATA:
     process.env.AUDIO_DATA === undefined || process.env.AUDIO_DATA === "private"
       ? "default"
