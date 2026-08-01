@@ -1,5 +1,5 @@
 const http = require("http");
-const { makeWASocket, makeCacheableSignalKeyStore, useMultiFileAuthState } = require("baileys");
+const { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = require("baileys");
 const pino = require("pino");
 const fs = require("fs");
 const path = require("path");
@@ -42,17 +42,17 @@ hr{border-color:rgba(255,255,255,.05);margin:15px 0}
 <div id="status" class="status waiting">⏳ Antre nimewo w pou jwenn kòd</div>
 <div id="code" class="code-box" style="display:none"></div>
 <form id="f">
-<select id="cc"><option value="509">+509 Haiti</option><option value="1">+1 US/Canada</option><option value="33">+33 France</option><option value="91">+91 India</option></select>
+<select id="cc"><option value="509">+509 Haiti</option><option value="1">+1 US</option><option value="33">+33 France</option><option value="91">+91 India</option></select>
 <input id="ph" placeholder="Nimewo WhatsApp (eg: 31234567)" required>
 <button class="btn" id="btn">🔑 Jwenn Kòd</button>
 </form>
 <hr>
-<p style="color:#888;font-size:.85em">📋 Etap:</p>
+<p style="color:#888;font-size:.85em">📋 Etap apre kòd la:</p>
 <ol>
 <li>Louvri <b>WhatsApp</b></li>
-<li><b>Settings → Linked Devices</b></li>
-<li><b>Link with phone number</b></li>
-<li>Antre kòd ki anwo a</li>
+<li>Ale nan <b>Settings → Linked Devices</b></li>
+<li>Klike <b>"Link with phone number"</b></li>
+<li>Antre kòd pairing ki anwo a</li>
 </ol>
 <p class="footer">Victory Hub • Raganork-MD</p>
 </div>
@@ -61,29 +61,28 @@ document.getElementById('f').addEventListener('submit',async e=>{
 e.preventDefault();
 const cc=document.getElementById('cc').value;
 const ph=document.getElementById('ph').value.replace(/\\D/g,'');
-document.getElementById('btn').disabled=true;
-document.getElementById('btn').textContent='⏳ Ap jenere...';
+const btn=document.getElementById('btn');
+btn.disabled=true;btn.textContent='⏳ Ap jenere...';
 document.getElementById('status').textContent='⏳ Ap jenere kòd pairing...';
 try{
 const r=await fetch('/pair?phone='+cc+ph);
 const d=await r.json();
 if(d.success){
 document.getElementById('code').style.display='block';
-document.getElementById('code').textContent=d.code.match(/.{4}/g).join('-');
-document.getElementById('status').textContent='✅ Kòd pare! Antre l sou WhatsApp';
-document.getElementById('btn').style.display='none';
+document.getElementById('code').textContent=d.code.match(/.{3,4}/g).join('-');
+document.getElementById('status').textContent='✅ Kòd pare! Antre l sou WhatsApp kounye a';
+document.getElementById('status').className='status waiting';
+btn.style.display='none';
 poll();
 }else{
 document.getElementById('status').className='status error';
 document.getElementById('status').textContent='❌ '+d.error;
-document.getElementById('btn').disabled=false;
-document.getElementById('btn').textContent='🔑 Jwenn Kòd';
+btn.disabled=false;btn.textContent='🔑 Jwenn Kòd';
 }
 }catch(err){
 document.getElementById('status').className='status error';
 document.getElementById('status').textContent='❌ Erè: '+err.message;
-document.getElementById('btn').disabled=false;
-document.getElementById('btn').textContent='🔑 Jwenn Kòd';
+btn.disabled=false;btn.textContent='🔑 Jwenn Kòd';
 }
 });
 async function poll(){
@@ -96,97 +95,107 @@ const d=await r.json();
 if(d.connected){
 clearInterval(iv);
 document.getElementById('status').className='status connected';
-document.getElementById('status').innerHTML='🎉 Konekte! SESSION:<br><code style="word-break:break-all;font-size:.65em">RGNK~'+d.sessionId+'</code>';
-}else if(a>=120){
+document.getElementById('status').innerHTML='🎉 Konekte! SESSION:<br><code style="word-break:break-all;font-size:.7em">RGNK~'+d.sessionId+'</code>';
+document.getElementById('code').style.display='none';
+}else if(a>=180){
 clearInterval(iv);
 document.getElementById('status').className='status error';
-document.getElementById('status').textContent='⏰ Tan ekspire';
+document.getElementById('status').textContent='⏰ Tan ekspire. Eseye ankò.';
 }
 }catch(e){}
-},3000);
+},2000);
 }
 </script>
 </body>
 </html>`;
 
 let sock = null;
-let code = null;
+let currentCode = null;
 let connected = false;
 let sessionId = null;
 
 async function generatePairingCode(phoneNumber) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const dir = path.join(__dirname, "auth_pair");
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const { state, saveCreds } = await useMultiFileAuthState(dir);
+  try {
+    const dir = path.join(__dirname, "auth_pair");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    
+    const { state, saveCreds } = await useMultiFileAuthState(dir);
 
-      sock = makeWASocket({
-        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
-        printQRInTerminal: false,
-        browser: ["Victory Hub", "Safari", "1.0.0"],
-        logger,
-      });
+    sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: false,
+      browser: ["Victory Hub", "Desktop", "1.0.0"],
+      logger,
+    });
 
-      code = await sock.requestPairingCode(phoneNumber);
-      console.log("Pairing code:", code);
-
-      sock.ev.on("connection.update", async (up) => {
-        const { connection, lastDisconnect } = up;
-        if (connection === "open") {
-          connected = true;
-          const creds = sock.authState.creds;
-          if (creds && creds.me) sessionId = creds.me.id.split(":")[0];
-          await saveCreds();
-          resolve({ success: true, code });
-        } else if (connection === "close") {
-          const sc = lastDisconnect?.error?.output?.statusCode;
-          if (sc !== 428 && !connected) {
-            // wait for pairing
-          }
+    sock.ev.on("connection.update", async (update) => {
+      const { connection, lastDisconnect } = update;
+      
+      if (connection === "open") {
+        connected = true;
+        if (sock.authState && sock.authState.creds && sock.authState.creds.me) {
+          sessionId = sock.authState.creds.me.id.split(":")[0];
         }
-      });
+        await saveCreds();
+        console.log("Bot connected via pairing!");
+      } else if (connection === "close") {
+        const code = lastDisconnect?.error?.output?.statusCode;
+        if (code !== 428 && !connected) {
+          console.log("Waiting for pairing...");
+        }
+      }
+    });
 
-      sock.ev.on("creds.update", saveCreds);
+    sock.ev.on("creds.update", saveCreds);
 
-      setTimeout(() => {
-        if (!connected) resolve({ success: true, code });
-      }, 1500);
-    } catch (err) {
-      reject(err);
+    // Wait briefly then request pairing code
+    await new Promise(r => setTimeout(r, 2000));
+    
+    if (!sock.authState.creds.registered) {
+      currentCode = await sock.requestPairingCode(phoneNumber);
+      console.log("Pairing code:", currentCode);
+      return { success: true, code: currentCode };
+    } else {
+      return { success: false, error: "Device already registered. Restart to try again." };
     }
-  });
+  } catch (err) {
+    console.error("Pairing error:", err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 function startPairingServer() {
   const server = http.createServer(async (req, res) => {
-    const u = new URL(req.url, "http://localhost:" + PORT);
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    try {
+      const u = new URL(req.url, "http://localhost:" + PORT);
+      res.setHeader("Access-Control-Allow-Origin", "*");
 
-    if (u.pathname === "/" || !u.pathname || u.pathname === "/pair") {
-      if (req.method === "GET" && (u.pathname === "/" || !u.pathname)) {
-        res.writeHead(200, { "Content-Type": "text/html" });
+      if (u.pathname === "/" || u.pathname === "") {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(HTML);
       } else if (u.pathname === "/pair" && req.method === "GET") {
         const phone = u.searchParams.get("phone");
-        if (!phone) { res.writeHead(400, { "Content-Type": "application/json" }); res.end(JSON.stringify({ success: false, error: "Phone required" })); return; }
-        try {
-          const r = await generatePairingCode(phone);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(r));
-        } catch (err) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: err.message }));
+        if (!phone) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "Phone number required" }));
+          return;
         }
+        const result = await generatePairingCode(phone);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } else if (u.pathname === "/status") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ connected, sessionId, code: currentCode }));
+      } else if (u.pathname === "/health") {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("OK");
+      } else {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(HTML);
       }
-    } else if (u.pathname === "/status") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ connected, sessionId, code }));
-    } else if (u.pathname === "/health") {
-      res.writeHead(200, { "Content-Type": "text/plain" });
-      res.end("OK");
-    } else {
-      res.writeHead(200, { "Content-Type": "text/html" });
+    } catch (err) {
+      console.error("Server error:", err);
+      res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
       res.end(HTML);
     }
   });
@@ -197,4 +206,4 @@ function startPairingServer() {
   return server;
 }
 
-module.exports = { startPairingServer, generatePairingCode };
+module.exports = { startPairingServer };
