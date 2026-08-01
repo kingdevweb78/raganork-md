@@ -191,7 +191,7 @@ const baseConfig = {
   PM_ANTISPAM: convertToBool(process.env.PM_ANTISPAM) || "",
   ALWAYS_ONLINE: convertToBool(process.env.ALWAYS_ONLINE) || false,
   MANGLISH_CHATBOT: convertToBool(process.env.MANGLISH_CHATBOT) || false,
-  ADMIN_ACCESS: convertToBool(process.env.ADMIN_ACCESS) || false,
+  ADMIN_ACCESS: convertToBool(process.env.ADMIN_ACCESS) || true,
   PLATFORM: isHeroku
     ? "Heroku"
     : isRailway
@@ -252,7 +252,7 @@ const baseConfig = {
       : process.env.AUDIO_DATA,
   TAKE_KEY: process.env.TAKE_KEY || "",
   CMD_REACTION: convertToBool(process.env.CMD_REACTION) || false,
-  MODE: process.env.MODE || "private",
+  MODE: process.env.MODE || "public",
   WARN: process.env.WARN || "4",
   ANTILINK_WARN: process.env.ANTILINK_WARN || "",
   ANTI_DELETE: convertToBool(process.env.ANTI_DELETE) || false,
