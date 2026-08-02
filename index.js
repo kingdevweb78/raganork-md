@@ -17,14 +17,9 @@ const fs = require("fs");
 const http = require("http");
 const config = require("./config");
 
-// ========================================
-// Logger — montre enfòmasyon nan konsol
-// ========================================
 const logger = pino({ level: "info" });
 
-// ========================================
-// HTML pou paj pairing la
-// ========================================
+// Paj pairing HTML
 const pairingHTML = `<!DOCTYPE html>
 <html lang="ht">
 <head>
@@ -56,15 +51,9 @@ setInterval(async()=>{try{const r=await fetch('/state');const d=await r.json();i
 </body>
 </html>`;
 
-// ========================================
-// Eta global bot la
-// ========================================
 let pairingCode=null,isConnected=false,sessionId=null,botSocket=null,retryCount=0;
 const MAX_RETRIES=10;
 
-// ========================================
-// Sèvè HTTP — health check + paj pairing
-// ========================================
 function startHTTPServer(){
   http.createServer((req,res)=>{
     res.setHeader("Access-Control-Allow-Origin","*");
@@ -77,33 +66,23 @@ function startHTTPServer(){
   }).listen(config.PORT,()=>logger.info("🌐 HTTP sou pòt "+config.PORT));
 }
 
-// ========================================
-// Konekte ak WhatsApp
-// ========================================
 async function connectToWhatsApp(){
   if(botSocket){try{botSocket.end()}catch(e){}botSocket=null}
-  
   const ad=path.join(__dirname,"auth_info");
   if(!fs.existsSync(ad))fs.mkdirSync(ad,{recursive:true});
   const{state,saveCreds}=await useMultiFileAuthState(ad);
   const ph=config.PAIRING_PHONE||"";
-  
   logger.info("🔌 Ap konekte ak WhatsApp...");
-  
   botSocket=makeWASocket({
     auth:state,printQRInTerminal:false,
     browser:Browsers.ubuntu("Chrome"),logger,
     connectTimeoutMs:60000,defaultQueryTimeoutMs:60000,
     markOnlineOnConnect:true,syncFullHistory:false
   });
-
   botSocket.ev.on("creds.update",saveCreds);
-
   botSocket.ev.on("connection.update",async(u)=>{
     const{connection,lastDisconnect,qr}=u;
     logger.info("📡 "+(connection||"inisyalize..."));
-    
-    // === Konekte ===
     if(connection==="open"){
       isConnected=true;retryCount=0;
       if(botSocket?.authState?.creds?.me)sessionId=botSocket.authState.creds.me.id.split(":")[0];
@@ -111,16 +90,13 @@ async function connectToWhatsApp(){
       logger.info("✅ KONEKTE! ID: RGNK~"+sessionId);
       logger.info("📋 Kopye ID sa pou Railway SESSION_ID");
     }
-    
-    // === Rekonekte ===
     if(connection==="close"){
       const sc=lastDisconnect?.error?.output?.statusCode;
-      if(sc===DisconnectReason.loggedOut){logger.warn("🚫 Dekonekte. Sispann.");return}
+      // Si PAIRING_PHONE etabli, kontinye eseye menm si loggedOut
+      if(sc===DisconnectReason.loggedOut&&!ph){logger.warn("🚫 Dekonekte. Sispann.");return}
       if(retryCount<MAX_RETRIES){retryCount++;const d=Math.min(1000*Math.pow(2,retryCount),60000);logger.warn("🔄 Rekonekte nan "+(d/1000)+"s... ("+retryCount+"/"+MAX_RETRIES+")");setTimeout(()=>connectToWhatsApp(),d)}
       else logger.error("❌ Twòp tantativ.")
     }
-    
-    // === Pairing Code ===
     if(!isConnected&&ph&&(connection==="connecting"||!!qr)&&!pairingCode){
       try{
         logger.info("📱 Jenere pairing code pou +"+ph);
@@ -129,16 +105,12 @@ async function connectToWhatsApp(){
         logger.info("📱 ANTRE KÒD SA NAN WHATSAPP → Linked Devices → Link with phone number");
       }catch(e){logger.error("❌ "+e.message);pairingCode=null}
     }
-    
-    // === QR Code (si pa gen nimewo) ===
     if(!ph&&!!qr&&!isConnected){
       logger.info("📱 Eskane QR nan WhatsApp → Linked Devices → Scan QR");
       try{require("qrcode-terminal").generate(qr,{small:true})}catch(e){}
       pairingCode="[QR — gade konsol]";
     }
   });
-
-  // === Jesyon mesaj ===
   botSocket.ev.on("messages.upsert",async(msg)=>{
     try{
       const m=msg.messages[0];if(!m?.message||m.key?.fromMe)return;
@@ -151,9 +123,6 @@ async function connectToWhatsApp(){
   });
 }
 
-// ========================================
-// Demaraj
-// ========================================
 async function startBot(){
   logger.info("⚡ VICTORY HUB v2.0");
   logger.info("📱 Nimewo: "+(config.PAIRING_PHONE?"+"+config.PAIRING_PHONE:"QR Code"));
