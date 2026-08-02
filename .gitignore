@@ -1,5 +1,5 @@
 node_modules/
-*.db
-.env.local
+auth_info/
+auth_pair/
+*.log
 .env
-!config.env
