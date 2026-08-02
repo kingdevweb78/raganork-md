@@ -4,12 +4,11 @@
   "description": "Victory Hub WhatsApp Bot - Pairing Code ak QR Code",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "latest",
-    "pino": "^9.0.0",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "pino": "^8.17.0",
     "qrcode-terminal": "^0.12.0"
   },
   "engines": {
