@@ -4,6 +4,14 @@
 // Bibliyotèk: @whiskeysockets/baileys
 // ========================================
 
+// === Anpeche Bot la Crash (Global Handlers) ===
+process.on("uncaughtException", (err) => {
+  console.error("[Fatal Error - Uncaught Exception]:", err.message || err);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Fatal Error - Unhandled Rejection]:", reason?.message || reason);
+});
+
 const {
   makeWASocket,
   useMultiFileAuthState,
@@ -52,7 +60,7 @@ setInterval(async()=>{try{const r=await fetch('/state');const d=await r.json();i
 </html>`;
 
 let pairingCode=null,isConnected=false,sessionId=null,botSocket=null,retryCount=0;
-const MAX_RETRIES=10;
+const MAX_RETRIES=15;
 
 function startHTTPServer(){
   http.createServer((req,res)=>{
@@ -73,23 +81,30 @@ async function connectToWhatsApp(){
   const{state,saveCreds}=await useMultiFileAuthState(ad);
   const ph=config.PAIRING_PHONE||"";
   logger.info("🔌 Ap konekte ak WhatsApp...");
+  
+  // Konfigirasyon ak sekirite
   botSocket=makeWASocket({
     auth:state,printQRInTerminal:false,
     browser:Browsers.ubuntu("Chrome"),logger,
     connectTimeoutMs:60000,defaultQueryTimeoutMs:60000,
     markOnlineOnConnect:true,syncFullHistory:false
   });
+  
   botSocket.ev.on("creds.update",saveCreds);
+  
   botSocket.ev.on("connection.update",async(u)=>{
     const{connection,lastDisconnect,qr}=u;
     logger.info("📡 "+(connection||"inisyalize..."));
+    
+    // === Konekte ===
     if(connection==="open"){
       isConnected=true;retryCount=0;
       if(botSocket?.authState?.creds?.me)sessionId=botSocket.authState.creds.me.id.split(":")[0];
       await saveCreds();
       logger.info("✅ KONEKTE! ID: RGNK~"+sessionId);
-      logger.info("📋 Kopye ID sa pou Railway SESSION_ID");
     }
+    
+    // === Rekonekte ===
     if(connection==="close"){
       const sc=lastDisconnect?.error?.output?.statusCode;
       // Si PAIRING_PHONE etabli, kontinye eseye menm si loggedOut
@@ -97,20 +112,17 @@ async function connectToWhatsApp(){
       if(retryCount<MAX_RETRIES){retryCount++;const d=Math.min(1000*Math.pow(2,retryCount),60000);logger.warn("🔄 Rekonekte nan "+(d/1000)+"s... ("+retryCount+"/"+MAX_RETRIES+")");setTimeout(()=>connectToWhatsApp(),d)}
       else logger.error("❌ Twòp tantativ.")
     }
+    
+    // === Pairing Code ===
     if(!isConnected&&ph&&(connection==="connecting"||!!qr)&&!pairingCode){
       try{
         logger.info("📱 Jenere pairing code pou +"+ph);
         pairingCode=await botSocket.requestPairingCode(ph);
         logger.info("⚡ KÒD: "+pairingCode.match(/.{3,4}/g)?.join("-"));
-        logger.info("📱 ANTRE KÒD SA NAN WHATSAPP → Linked Devices → Link with phone number");
       }catch(e){logger.error("❌ "+e.message);pairingCode=null}
     }
-    if(!ph&&!!qr&&!isConnected){
-      logger.info("📱 Eskane QR nan WhatsApp → Linked Devices → Scan QR");
-      try{require("qrcode-terminal").generate(qr,{small:true})}catch(e){}
-      pairingCode="[QR — gade konsol]";
-    }
   });
+  
   botSocket.ev.on("messages.upsert",async(msg)=>{
     try{
       const m=msg.messages[0];if(!m?.message||m.key?.fromMe)return;
@@ -130,4 +142,4 @@ async function startBot(){
   await connectToWhatsApp();
 }
 
-startBot().catch(e=>{logger.error("Erè fatal: "+e.message);process.exit(1)});
+startBot().catch(e=>logger.error("Erè fatal: "+e.message));
