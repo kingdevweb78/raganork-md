@@ -1,7 +1,7 @@
 const http=require("http");
 const{makeWASocket,useMultiFileAuthState,Browsers,fetchLatestBaileysVersion}=require("baileys");
 const pino=require("pino");const fs=require("fs");const path=require("path");
-const PORT=3000;const logger=pino({level:"error"});
+const PORT=3000;const logger=pino({level:"info"});
 
 const HTML=`<!DOCTYPE html><html lang="ht"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Victory Hub</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -50,7 +50,7 @@ ol li b{color:#e8e8f0}
 <div id="bk" class="bk" style="display:none" onclick="rs()">← Nouvo kòd</div>
 </div>
 <div class="st"><h4>📋 Etap</h4><ol>
-<li>Klike <b>"Jwenn Kòd"</b></li><li>Tann 5-10 segonn</li>
+<li>Klike <b>"Jwenn Kòd"</b></li><li>Tann 5-15 segonn</li>
 <li><b>Tape notifikasyon WhatsApp</b></li><li>Antre kòd la</li><li>✅ <b>Konekte!</b></li></ol></div>
 <div class="tp">💡 WhatsApp ap voye notifikasyon: <b>"Enter code to link new device"</b></div>
 </div>
@@ -83,57 +83,63 @@ function al(m,t){document.getElementById('al').innerHTML=m;document.getElementBy
 function rs(){if(pi)clearInterval(pi);document.getElementById('cb').style.display='none';document.getElementById('btn').style.display='block';document.getElementById('btn').disabled=false;document.getElementById('btn').textContent='🔑 Jwenn Kòd';document.getElementById('bk').style.display='none';al('⏳ Antre nimewo w pou jwenn kòd','w')}
 </script></body></html>`;
 
-let sock=null,code=null,connected=false,sid=null;
+let currentSock=null,currentCode=null,isConnected=false,sessionId=null;
 
 async function genPairCode(phone){
-  if(sock){try{sock.end()}catch(e){}sock=null}
-  code=null;connected=false;sid=null;
+  if(currentSock){try{currentSock.end()}catch(e){}currentSock=null}
+  currentCode=null;isConnected=false;sessionId=null;
   
   const dir=path.join(__dirname,"auth_pair");
   if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});
   const{state,saveCreds}=await useMultiFileAuthState(dir);
   const{version}=await fetchLatestBaileysVersion();
   
-  console.log("Creating socket v"+version);
+  console.log("Baileys version:",version);
   
-  sock=makeWASocket({
-    version,
-    auth:state,
-    printQRInTerminal:false,
-    browser:Browsers.ubuntu("Chrome"),
-    logger,
-    connectTimeoutMs:60000,
-    defaultQueryTimeoutMs:60000,
-  });
+  return new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>{
+      reject(new Error("Timeout (60s). Eseye ankò."));
+    },60000);
+    
+    currentSock=makeWASocket({
+      version,
+      auth:state,
+      printQRInTerminal:false,
+      browser:Browsers.ubuntu("Chrome"),
+      logger,
+      connectTimeoutMs:60000,
+      defaultQueryTimeoutMs:60000,
+    });
 
-  sock.ev.on("connection.update",async u=>{
-    const{connection}=u;
-    console.log(new Date().toISOString(),"Baileys:",connection);
-    if(connection==="open"){
-      connected=true;
-      if(sock?.authState?.creds?.me)sid=sock.authState.creds.me.id.split(":")[0];
-      await saveCreds();
-    }
-  });
-  sock.ev.on("creds.update",saveCreds);
-
-  // Wait for socket to connect (up to 45s)
-  console.log("Waiting for socket...");
-  await new Promise((resolve,reject)=>{
-    const t=setTimeout(()=>reject(new Error("Timeout koneksyon. Eseye ankò.")),45000);
-    sock.ev.on("connection.update",function h(u){
+    currentSock.ev.on("connection.update",async(u)=>{
       const{connection,qr}=u;
-      if(connection==="connecting"||!!qr||connection==="open"){
-        clearTimeout(t);sock.ev.off("connection.update",h);
-        console.log("Socket ready at:",connection);resolve();
+      console.log(connection,!!qr);
+      
+      if(connection==="open"){
+        isConnected=true;
+        if(currentSock?.authState?.creds?.me)sessionId=currentSock.authState.creds.me.id.split(":")[0];
+        await saveCreds();
+        clearTimeout(timeout);
+        resolve({success:true,code:currentCode});
+      }
+      
+      // Request pairing code when socket is connecting (official Baileys approach)
+      if((connection==="connecting"||!!qr)&&!currentCode){
+        try{
+          console.log("Requesting pairing code for:",phone);
+          currentCode=await currentSock.requestPairingCode(phone);
+          console.log("Code:",currentCode);
+          clearTimeout(timeout);
+          resolve({success:true,code:currentCode});
+        }catch(e){
+          console.error("requestPairingCode error:",e.message);
+          reject(new Error(e.message));
+        }
       }
     });
+
+    currentSock.ev.on("creds.update",saveCreds);
   });
-  
-  console.log("requestPairingCode for:",phone);
-  code=await sock.requestPairingCode(phone);
-  console.log("Code:",code);
-  return{success:true,code};
 }
 
 function startPairingServer(){
@@ -147,7 +153,7 @@ function startPairingServer(){
         if(!ph){res.writeHead(400,{"Content-Type":"application/json"});res.end(JSON.stringify({success:false,error:"Nimewo obligatwa"}));return}
         try{const r=await genPairCode(ph);res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify(r))}
         catch(e){console.error(e);res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({success:false,error:e.message}))}
-      }else if(u.pathname==="/status"){res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({connected,sessionId:sid,code}))}
+      }else if(u.pathname==="/status"){res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({connected:isConnected,sessionId,code:currentCode}))}
       else if(u.pathname==="/health"){res.writeHead(200,{"Content-Type":"text/plain"});res.end("OK")}
       else{res.writeHead(200,{"Content-Type":"text/html; charset=utf-8"});res.end(HTML)}
     }catch(e){res.writeHead(500,{"Content-Type":"text/html"});res.end(HTML)}
